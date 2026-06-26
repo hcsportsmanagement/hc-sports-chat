@@ -9,35 +9,35 @@ export default async function handler(req, res) {
   const { name, email } = req.body;
   if (!name || !email) return res.status(400).json({ error: 'Missing fields' });
 
+  // Split name into first/last
+  const parts = name.trim().split(' ');
+  const firstName = parts[0] || '';
+  const lastName = parts.slice(1).join(' ') || 'Unknown';
+
   try {
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: 'HC Sports Chat <onboarding@resend.dev>',
-        to: 'chris@hcsportsmanagement.com',
-        subject: `New lead from website chat: ${name}`,
-        html: `
-          <h2>New lead from your website chat widget</h2>
-          <p><strong>Name:</strong> ${name}</p>
-          <p><strong>Email:</strong> ${email}</p>
-          <p><strong>Time:</strong> ${new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })}</p>
-          <br>
-          <a href="mailto:${email}">Reply to ${name}</a>
-        `,
-      }),
+    const params = new URLSearchParams({
+      oid: '00Dfn00000BOwZB',
+      retURL: 'https://hcsportsmanagement.com',
+      first_name: firstName,
+      last_name: lastName,
+      email: email,
+      lead_source: 'Web',
     });
 
-    if (!response.ok) {
-      const err = await response.text();
-      console.error('Resend error:', err);
-      return res.status(500).json({ error: 'Email failed' });
+    const response = await fetch('https://webto.salesforce.com/servlet/servlet.WebToLead?encoding=UTF-8', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+
+    // Salesforce returns a redirect (302) on success
+    if (response.ok || response.status === 302 || response.redirected) {
+      return res.status(200).json({ success: true });
     }
 
-    return res.status(200).json({ success: true });
+    console.error('Salesforce error:', response.status);
+    return res.status(500).json({ error: 'Salesforce submission failed' });
+
   } catch (err) {
     console.error('Lead handler error:', err);
     return res.status(500).json({ error: 'Server error' });
